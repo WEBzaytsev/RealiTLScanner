@@ -47,8 +47,20 @@ func ScanTLS(host Host, out chan<- string, geo *Geo, config *ScanConfig) {
 	}
 	state := c.ConnectionState()
 	alpn := state.NegotiatedProtocol
-	domain := state.PeerCertificates[0].Subject.CommonName
-	issuers := strings.Join(state.PeerCertificates[0].Issuer.Organization, " | ")
+	
+	// Extract domain from certificate
+	// Prefer DNSNames (Subject Alternative Names) over CommonName
+	cert := state.PeerCertificates[0]
+	domain := ""
+	if len(cert.DNSNames) > 0 {
+		// Use first DNS name from SANs
+		domain = cert.DNSNames[0]
+	} else if cert.Subject.CommonName != "" {
+		// Fallback to CommonName if no SANs
+		domain = cert.Subject.CommonName
+	}
+	
+	issuers := strings.Join(cert.Issuer.Organization, " | ")
 	log := slog.Info
 	feasible := true
 	geoCode := geo.GetGeo(host.IP)
@@ -122,8 +134,19 @@ func ScanTLSWithCallbacks(host Host, scanner *Scanner) {
 		return
 	}
 	
-	domain := state.PeerCertificates[0].Subject.CommonName
-	issuers := strings.Join(state.PeerCertificates[0].Issuer.Organization, " | ")
+	// Extract domain from certificate
+	// Prefer DNSNames (Subject Alternative Names) over CommonName
+	cert := state.PeerCertificates[0]
+	domain := ""
+	if len(cert.DNSNames) > 0 {
+		// Use first DNS name from SANs
+		domain = cert.DNSNames[0]
+	} else if cert.Subject.CommonName != "" {
+		// Fallback to CommonName if no SANs
+		domain = cert.Subject.CommonName
+	}
+	
+	issuers := strings.Join(cert.Issuer.Organization, " | ")
 	geoCode := scanner.Geo.GetGeo(host.IP)
 	tlsVersion := tls.VersionName(state.Version)
 

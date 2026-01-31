@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
+	"github.com/xuri/excelize/v2"
 )
 
 type GUI struct {
@@ -47,9 +48,10 @@ type GUI struct {
 	verboseCheck *widget.Check
 	
 	// Control widgets
-	startBtn    *widget.Button
-	stopBtn     *widget.Button
-	saveBtn     *widget.Button
+	startBtn     *widget.Button
+	stopBtn      *widget.Button
+	saveCSVBtn   *widget.Button
+	saveExcelBtn *widget.Button
 	
 	// Results table
 	resultsTable *widget.Table
@@ -146,14 +148,18 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.stopBtn = widget.NewButton("Stop", g.onStop)
 	g.stopBtn.Disable()
 	
-	g.saveBtn = widget.NewButton("Save CSV", g.onSave)
-	g.saveBtn.Disable()
+	g.saveCSVBtn = widget.NewButton("Save CSV", g.onSaveCSV)
+	g.saveCSVBtn.Disable()
+	
+	g.saveExcelBtn = widget.NewButton("Save Excel", g.onSaveExcel)
+	g.saveExcelBtn.Disable()
 	
 	controlBox := container.NewHBox(
 		g.startBtn,
 		g.stopBtn,
 		layout.NewSpacer(),
-		g.saveBtn,
+		g.saveCSVBtn,
+		g.saveExcelBtn,
 	)
 	
 	// Results table
@@ -488,7 +494,8 @@ func (g *GUI) onStart() {
 		fyne.Do(func() {
 			g.isScanning = true
 			g.stopBtn.Enable()
-			g.saveBtn.Disable()
+			g.saveCSVBtn.Disable()
+			g.saveExcelBtn.Disable()
 			g.statusText.Set("Scanning started...")
 		})
 		
@@ -507,7 +514,8 @@ func (g *GUI) runScan() {
 			g.isScanning = false
 			g.startBtn.Enable()
 			g.stopBtn.Disable()
-			g.saveBtn.Enable()
+			g.saveCSVBtn.Enable()
+			g.saveExcelBtn.Enable()
 			g.statusText.Set(fmt.Sprintf("Scanning completed. Found: %d", count))
 		})
 	}()
@@ -564,7 +572,7 @@ func (g *GUI) onStop() {
 	}
 }
 
-func (g *GUI) onSave() {
+func (g *GUI) onSaveCSV() {
 	g.resultsMu.Lock()
 	resultsCount := len(g.results)
 	g.resultsMu.Unlock()
@@ -617,6 +625,55 @@ func (g *GUI) onSave() {
 	fileDialog.Show()
 }
 
+func (g *GUI) onSaveExcel() {
+	g.resultsMu.Lock()
+	resultsCount := len(g.results)
+	g.resultsMu.Unlock()
+	
+	if resultsCount == 0 {
+		dialog.ShowInformation("No Results", "No results to save", g.window)
+		return
+	}
+	
+	// Generate default filename with timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	defaultFilename := fmt.Sprintf("scan_results_%s.xlsx", timestamp)
+	
+	// Create file save dialog
+	fileDialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		if err != nil {
+			dialog.ShowError(err, g.window)
+			return
+		}
+		if writer == nil {
+			return
+		}
+		defer writer.Close()
+		
+		if err := g.saveToExcel(writer); err != nil {
+			dialog.ShowError(fmt.Errorf("Failed to save Excel: %v", err), g.window)
+		} else {
+			g.resultsMu.Lock()
+			savedCount := 0
+			for _, result := range g.results {
+				if result.Feasible {
+					savedCount++
+				}
+			}
+			g.resultsMu.Unlock()
+			
+			dialog.ShowInformation("Saved",
+				fmt.Sprintf("Saved %d feasible results", savedCount), g.window)
+		}
+		
+	}, g.window)
+	
+	// Set default filename and filter
+	fileDialog.SetFileName(defaultFilename)
+	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".xlsx"}))
+	fileDialog.Show()
+}
+
 func (g *GUI) sortByColumn(col int) {
 	g.resultsMu.Lock()
 	defer g.resultsMu.Unlock()
@@ -660,3 +717,89 @@ func (g *GUI) sortByColumn(col int) {
 		g.resultsTable.Refresh()
 	})
 }
+
+func (g *GUI) saveToExcel(writer fyne.URIWriteCloser) error {
+	g.resultsMu.Lock()
+	defer g.resultsMu.Unlock()
+	
+	// Create new Excel file
+	f := excelize.NewFile()
+	defer f.Close()
+	
+	sheetName := "Scan Results"
+	index, err := f.NewSheet(sheetName)
+	if err != nil {
+		return err
+	}
+	f.SetActiveSheet(index)
+	
+	// Create header style
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Bold: true,
+			Size: 12,
+		},
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Pattern: 1,
+			Color:   []string{"#E0E0E0"},
+		},
+		Alignment: &excelize.Alignment{
+			Horizontal: "center",
+			Vertical:   "center",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	
+	// Write headers
+	headers := []string{"IP", "Origin", "Domain", "Issuer", "Geo", "TLS Version", "ALPN", "Feasible"}
+	for col, header := range headers {
+		cell, _ := excelize.CoordinatesToCellName(col+1, 1)
+		f.SetCellValue(sheetName, cell, header)
+		f.SetCellStyle(sheetName, cell, cell, headerStyle)
+	}
+	
+	// Set column widths
+	f.SetColWidth(sheetName, "A", "A", 15) // IP
+	f.SetColWidth(sheetName, "B", "B", 20) // Origin
+	f.SetColWidth(sheetName, "C", "C", 30) // Domain
+	f.SetColWidth(sheetName, "D", "D", 40) // Issuer
+	f.SetColWidth(sheetName, "E", "E", 8)  // Geo
+	f.SetColWidth(sheetName, "F", "F", 12) // TLS Version
+	f.SetColWidth(sheetName, "G", "G", 10) // ALPN
+	f.SetColWidth(sheetName, "H", "H", 10) // Feasible
+	
+	// Write data (only feasible results)
+	row := 2
+	for _, result := range g.results {
+		if result.Feasible {
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), result.IP)
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), result.Origin)
+			f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), result.Domain)
+			f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), result.Issuer)
+			f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), result.GeoCode)
+			f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), result.TLSVersion)
+			f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), result.ALPN)
+			f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), "Yes")
+			row++
+		}
+	}
+	
+	// Enable auto-filter
+	if row > 2 {
+		lastCell, _ := excelize.CoordinatesToCellName(len(headers), row-1)
+		f.AutoFilter(sheetName, fmt.Sprintf("A1:%s", lastCell), []excelize.AutoFilterOptions{})
+	}
+	
+	// Write to the provided writer
+	buf, err := f.WriteToBuffer()
+	if err != nil {
+		return err
+	}
+	
+	_, err = writer.Write(buf.Bytes())
+	return err
+}
+

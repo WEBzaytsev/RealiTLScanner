@@ -83,7 +83,7 @@ func runGUI() {
 }
 
 func (g *GUI) buildUI() fyne.CanvasObject {
-	// Сначала создаем Entry (до RadioGroup)
+	// Create Entry first (before RadioGroup)
 	g.inputEntry = widget.NewEntry()
 	g.inputEntry.SetPlaceHolder("Enter IP, CIDR or domain")
 	
@@ -437,11 +437,12 @@ func (g *GUI) onStart() {
 		return
 	}
 	
-	// Clear previous results
+	// Clear previous results and log
 	g.resultsMu.Lock()
 	g.results = make([]ScanResult, 0)
 	g.resultsMu.Unlock()
 	g.resultsTable.Refresh()
+	g.logText.Set("") // Clear log
 	
 	// Setup config
 	config := &ScanConfig{
@@ -459,7 +460,7 @@ func (g *GUI) onStart() {
 			count := len(g.results)
 			g.resultsMu.Unlock()
 			
-			// UI обновления через fyne.Do
+			// Update UI through fyne.Do
 			fyne.Do(func() {
 				g.resultsTable.Refresh()
 				g.statusText.Set(fmt.Sprintf("Scanning... Found: %d", count))
@@ -483,13 +484,13 @@ func (g *GUI) onStart() {
 		},
 	}
 	
-	// Создание Scanner в фоне чтобы не блокировать UI при загрузке GeoIP
+	// Create Scanner in background to avoid blocking UI during GeoIP loading
 	g.statusText.Set("Initializing...")
 	g.startBtn.Disable()
 	go func() {
 		g.scanner = NewScanner(config, callbacks)
 		
-		// После инициализации начать сканирование
+		// After initialization start scanning
 		// Update UI state
 		fyne.Do(func() {
 			g.isScanning = true
@@ -505,17 +506,42 @@ func (g *GUI) onStart() {
 }
 
 func (g *GUI) runScan() {
+	// Check that scanner is initialized
+	if g.scanner == nil {
+		fyne.Do(func() {
+			g.statusText.Set("Error: Scanner not initialized")
+			g.isScanning = false
+			g.startBtn.Enable()
+			g.stopBtn.Disable()
+		})
+		return
+	}
+	
+	// Log scan start
+	if g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
+		source := g.sourceRadio.Selected
+		input := sanitizeInput(g.inputEntry.Text)
+		g.scanner.Callbacks.OnLog("info", fmt.Sprintf("Starting scan: %s - %s", source, input))
+	}
+	
 	defer func() {
 		g.resultsMu.Lock()
 		count := len(g.results)
 		g.resultsMu.Unlock()
 		
+		// Log scan completion
+		if g.scanner != nil && g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
+			g.scanner.Callbacks.OnLog("info", fmt.Sprintf("Scan completed. Found: %d results", count))
+		}
+		
 		fyne.Do(func() {
 			g.isScanning = false
 			g.startBtn.Enable()
 			g.stopBtn.Disable()
-			g.saveCSVBtn.Enable()
-			g.saveExcelBtn.Enable()
+			if count > 0 {
+				g.saveCSVBtn.Enable()
+				g.saveExcelBtn.Enable()
+			}
 			g.statusText.Set(fmt.Sprintf("Scanning completed. Found: %d", count))
 		})
 	}()

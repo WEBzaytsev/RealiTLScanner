@@ -42,7 +42,7 @@ func main() {
 	flag.BoolVar(&gui, "gui", false, "Launch GUI mode")
 	flag.Parse()
 
-	// Если нет параметров вообще - запускаем GUI
+	// If no parameters at all - launch GUI
 	if !gui && addr == "" && in == "" && url == "" && flag.NFlag() == 0 {
 		runGUI()
 		return

@@ -2,7 +2,7 @@ package main
 
 import "context"
 
-// ScanConfig содержит все параметры сканирования
+// ScanConfig contains all scanning parameters
 type ScanConfig struct {
 	Port       int
 	Thread     int
@@ -11,7 +11,7 @@ type ScanConfig struct {
 	Verbose    bool
 }
 
-// ScanResult представляет результат сканирования одного хоста
+// ScanResult represents the scan result for one host
 type ScanResult struct {
 	IP         string
 	Origin     string
@@ -23,7 +23,7 @@ type ScanResult struct {
 	ALPN       string
 }
 
-// ScanCallbacks содержит callback функции для GUI
+// ScanCallbacks contains callback functions for GUI
 type ScanCallbacks struct {
 	OnResult    func(result ScanResult)
 	OnProgress  func(current, total int)
@@ -31,7 +31,7 @@ type ScanCallbacks struct {
 	OnGeoStatus func(status string)
 }
 
-// Scanner управляет процессом сканирования
+// Scanner manages the scanning process
 type Scanner struct {
 	Config    *ScanConfig
 	Callbacks *ScanCallbacks
@@ -40,18 +40,18 @@ type Scanner struct {
 	cancel    context.CancelFunc
 }
 
-// NewScanner создает новый экземпляр Scanner
+// NewScanner creates a new Scanner instance
 func NewScanner(config *ScanConfig, callbacks *ScanCallbacks) *Scanner {
 	ctx, cancel := context.WithCancel(context.Background())
 	
-	// Уведомить о начале инициализации GeoIP
+	// Notify about GeoIP initialization start
 	if callbacks != nil && callbacks.OnGeoStatus != nil {
 		callbacks.OnGeoStatus("Checking GeoIP database...")
 	}
 	
 	geo := NewGeo()
 	
-	// Уведомить о завершении
+	// Notify about completion
 	if callbacks != nil && callbacks.OnGeoStatus != nil {
 		if geo.geoReader != nil {
 			callbacks.OnGeoStatus("GeoIP ready")
@@ -69,14 +69,14 @@ func NewScanner(config *ScanConfig, callbacks *ScanCallbacks) *Scanner {
 	}
 }
 
-// Stop останавливает сканирование
+// Stop stops the scanning process
 func (s *Scanner) Stop() {
 	if s.cancel != nil {
 		s.cancel()
 	}
 }
 
-// Context возвращает контекст сканирования
+// Context returns the scanning context
 func (s *Scanner) Context() context.Context {
 	return s.ctx
 }

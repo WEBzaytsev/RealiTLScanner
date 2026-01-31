@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +28,14 @@ type GUI struct {
 	isScanning bool
 	statusText binding.String
 	logText    binding.String
+	
+	// Sorting state
+	sortColumn    int
+	sortAscending bool
+	
+	// Double-click detection
+	lastClickCell widget.TableCellID
+	lastClickTime time.Time
 	
 	// Input widgets
 	sourceRadio *widget.RadioGroup
@@ -83,12 +93,16 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.sourceRadio.Horizontal = true
 	
 	fileBrowseBtn := widget.NewButton("...", func() {
-		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err == nil && reader != nil {
 				g.inputEntry.SetText(reader.URI().Path())
 				reader.Close()
 			}
 		}, g.window)
+		
+		// Set filter for text files
+		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
+		fileDialog.Show()
 	})
 	
 	inputContainer := container.NewBorder(nil, nil, nil, fileBrowseBtn, g.inputEntry)
@@ -158,9 +172,17 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 			defer g.resultsMu.Unlock()
 			
 			if id.Row == 0 {
-				// Header
+				// Header with sort indicator
 				headers := []string{"IP", "Origin", "Domain", "Issuer", "Geo", "Feasible"}
-				label.SetText(headers[id.Col])
+				headerText := headers[id.Col]
+				if g.sortColumn == id.Col {
+					if g.sortAscending {
+						headerText += " ▲"
+					} else {
+						headerText += " ▼"
+					}
+				}
+				label.SetText(headerText)
 				label.TextStyle = fyne.TextStyle{Bold: true}
 			} else {
 				// Data
@@ -191,6 +213,78 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 			}
 		},
 	)
+	
+	// Add click handler for sorting and double-click copying
+	g.resultsTable.OnSelected = func(id widget.TableCellID) {
+		now := time.Now()
+		
+		if id.Row == 0 {
+			// Clicked on header - sort by this column
+			g.sortByColumn(id.Col)
+		} else {
+			// Clicked on data cell - check for double-click
+			isDoubleClick := id.Row == g.lastClickCell.Row && 
+							 id.Col == g.lastClickCell.Col && 
+							 now.Sub(g.lastClickTime) < 500*time.Millisecond
+			
+			if isDoubleClick {
+				// Double-click detected - copy to clipboard
+				g.resultsMu.Lock()
+				if id.Row-1 < len(g.results) {
+					result := g.results[id.Row-1]
+					var text string
+					switch id.Col {
+					case 0:
+						text = result.IP
+					case 1:
+						text = result.Origin
+					case 2:
+						text = result.Domain
+					case 3:
+						text = result.Issuer
+					case 4:
+						text = result.GeoCode
+					case 5:
+						if result.Feasible {
+							text = "true"
+						} else {
+							text = "false"
+						}
+					}
+					g.resultsMu.Unlock()
+					
+					if text != "" {
+						g.window.Clipboard().SetContent(text)
+						// Show brief notification
+						fyne.Do(func() {
+							oldStatus, _ := g.statusText.Get()
+							g.statusText.Set(fmt.Sprintf("Copied: %s", text))
+							time.AfterFunc(2*time.Second, func() {
+								fyne.Do(func() {
+									currentStatus, _ := g.statusText.Get()
+									if strings.HasPrefix(currentStatus, "Copied:") {
+										g.statusText.Set(oldStatus)
+									}
+								})
+							})
+						})
+					}
+					
+					// Reset click tracking
+					g.lastClickCell = widget.TableCellID{}
+					g.lastClickTime = time.Time{}
+				} else {
+					g.resultsMu.Unlock()
+				}
+			} else {
+				// First click - remember for double-click detection
+				g.lastClickCell = id
+				g.lastClickTime = now
+			}
+		}
+		// Deselect after processing
+		g.resultsTable.UnselectAll()
+	}
 	
 	g.resultsTable.SetColumnWidth(0, 120)
 	g.resultsTable.SetColumnWidth(1, 150)
@@ -258,30 +352,80 @@ func (g *GUI) getPlaceholder(source string) string {
 	}
 }
 
+func sanitizeInput(input string) string {
+	// Remove leading/trailing whitespace
+	input = strings.TrimSpace(input)
+	
+	// Remove all whitespace characters (spaces, tabs, newlines)
+	input = strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, input)
+	
+	return input
+}
+
+func sanitizeNumericInput(input string) string {
+	// Remove all non-digit characters
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, strings.TrimSpace(input))
+}
+
 func (g *GUI) onStart() {
 	if g.isScanning {
 		return
 	}
 	
-	// Validate inputs
-	if g.inputEntry.Text == "" {
+	// Sanitize and validate inputs
+	sanitizedInput := sanitizeInput(g.inputEntry.Text)
+	if sanitizedInput == "" {
 		dialog.ShowError(fmt.Errorf("Please specify scan source"), g.window)
 		return
 	}
 	
-	port, err := strconv.Atoi(g.portEntry.Text)
+	// Update input field with sanitized value
+	if sanitizedInput != g.inputEntry.Text {
+		g.inputEntry.SetText(sanitizedInput)
+	}
+	
+	// Sanitize numeric inputs
+	portStr := sanitizeNumericInput(g.portEntry.Text)
+	if portStr == "" {
+		portStr = "443"
+		g.portEntry.SetText(portStr)
+	}
+	
+	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 || port > 65535 {
 		dialog.ShowError(fmt.Errorf("Invalid port"), g.window)
 		return
 	}
 	
-	threads, err := strconv.Atoi(g.threadEntry.Text)
+	threadStr := sanitizeNumericInput(g.threadEntry.Text)
+	if threadStr == "" {
+		threadStr = "2"
+		g.threadEntry.SetText(threadStr)
+	}
+	
+	threads, err := strconv.Atoi(threadStr)
 	if err != nil || threads <= 0 {
 		dialog.ShowError(fmt.Errorf("Invalid thread count"), g.window)
 		return
 	}
 	
-	timeout, err := strconv.Atoi(g.timeoutEntry.Text)
+	timeoutStr := sanitizeNumericInput(g.timeoutEntry.Text)
+	if timeoutStr == "" {
+		timeoutStr = "10"
+		g.timeoutEntry.SetText(timeoutStr)
+	}
+	
+	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil || timeout <= 0 {
 		dialog.ShowError(fmt.Errorf("Invalid timeout"), g.window)
 		return
@@ -370,7 +514,7 @@ func (g *GUI) runScan() {
 	
 	var hostChan <-chan Host
 	source := g.sourceRadio.Selected
-	input := g.inputEntry.Text
+	input := sanitizeInput(g.inputEntry.Text)
 	
 	switch source {
 	case "IP/CIDR/Domain":
@@ -421,7 +565,21 @@ func (g *GUI) onStop() {
 }
 
 func (g *GUI) onSave() {
-	dialog.ShowFileSave(func(writer fyne.URIWriteCloser, err error) {
+	g.resultsMu.Lock()
+	resultsCount := len(g.results)
+	g.resultsMu.Unlock()
+	
+	if resultsCount == 0 {
+		dialog.ShowInformation("No Results", "No results to save", g.window)
+		return
+	}
+	
+	// Generate default filename with timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	defaultFilename := fmt.Sprintf("scan_results_%s.csv", timestamp)
+	
+	// Create file save dialog
+	fileDialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 		if err != nil {
 			dialog.ShowError(err, g.window)
 			return
@@ -438,21 +596,67 @@ func (g *GUI) onSave() {
 		_, _ = writer.Write([]byte("IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE\n"))
 		
 		// Write results
+		savedCount := 0
 		for _, result := range g.results {
 			if result.Feasible {
 				line := fmt.Sprintf("%s,%s,%s,\"%s\",%s\n",
 					result.IP, result.Origin, result.Domain, result.Issuer, result.GeoCode)
 				_, _ = writer.Write([]byte(line))
+				savedCount++
 			}
 		}
 		
 		dialog.ShowInformation("Saved",
-			fmt.Sprintf("Saved %d results", len(g.results)), g.window)
+			fmt.Sprintf("Saved %d feasible results", savedCount), g.window)
 		
 	}, g.window)
 	
-	// Set default filename
-	dialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {}, g.window)
-	dialog.SetFileName("scan_results.csv")
-	dialog.SetFilter(storage.NewExtensionFileFilter([]string{".csv"}))
+	// Set default filename and filter
+	fileDialog.SetFileName(defaultFilename)
+	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".csv"}))
+	fileDialog.Show()
+}
+
+func (g *GUI) sortByColumn(col int) {
+	g.resultsMu.Lock()
+	defer g.resultsMu.Unlock()
+	
+	// Toggle sort direction if same column, otherwise ascending
+	if g.sortColumn == col {
+		g.sortAscending = !g.sortAscending
+	} else {
+		g.sortColumn = col
+		g.sortAscending = true
+	}
+	
+	// Sort results based on column
+	sort.Slice(g.results, func(i, j int) bool {
+		var less bool
+		switch col {
+		case 0: // IP
+			less = g.results[i].IP < g.results[j].IP
+		case 1: // Origin
+			less = g.results[i].Origin < g.results[j].Origin
+		case 2: // Domain
+			less = g.results[i].Domain < g.results[j].Domain
+		case 3: // Issuer
+			less = g.results[i].Issuer < g.results[j].Issuer
+		case 4: // Geo
+			less = g.results[i].GeoCode < g.results[j].GeoCode
+		case 5: // Feasible
+			less = !g.results[i].Feasible && g.results[j].Feasible
+		default:
+			less = false
+		}
+		
+		if !g.sortAscending {
+			less = !less
+		}
+		return less
+	})
+	
+	// Refresh table
+	fyne.Do(func() {
+		g.resultsTable.Refresh()
+	})
 }

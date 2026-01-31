@@ -28,6 +28,21 @@ go build -ldflags -H=windowsgui -o RealiTLScanner-GUI.exe
 CGO_ENABLED=0 go build
 ```
 
+### Automated Releases
+
+The project uses GitHub Actions to automatically build binaries for Windows, Linux, and macOS.
+
+To create a release:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+This will trigger automatic builds and create a GitHub release with binaries for:
+- Windows (CLI+GUI and GUI-only versions)
+- Linux (CLI+GUI version)
+- macOS (CLI+GUI version)
+
 ## Usage
 
 ### GUI Mode

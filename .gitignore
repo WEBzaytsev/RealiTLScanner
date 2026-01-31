@@ -1,8 +1,10 @@
 RealiTLScanner
 RealiTLScanner.exe
+RealiTLScanner-GUI.exe
 results.txt
 .idea
 in.txt
 out.txt
 out.csv
 Country.mmdb
+Country.mmdb.tmp

@@ -21,6 +21,7 @@ var timeout int
 var verbose bool
 var enableIPv6 bool
 var url string
+var gui bool
 
 func main() {
 	_ = os.Unsetenv("ALL_PROXY")
@@ -38,7 +39,24 @@ func main() {
 	flag.BoolVar(&enableIPv6, "46", false, "Enable IPv6 in additional to IPv4")
 	flag.StringVar(&url, "url", "", "Crawl the domain list from a URL, "+
 		"e.g. https://launchpad.net/ubuntu/+archivemirrors")
+	flag.BoolVar(&gui, "gui", false, "Launch GUI mode")
 	flag.Parse()
+
+	// Если нет параметров вообще - запускаем GUI
+	if !gui && addr == "" && in == "" && url == "" && flag.NFlag() == 0 {
+		runGUI()
+		return
+	}
+
+	if gui {
+		runGUI()
+		return
+	}
+
+	runCLI()
+}
+
+func runCLI() {
 	if verbose {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelDebug,
@@ -66,7 +84,7 @@ func main() {
 	}
 	var hostChan <-chan Host
 	if addr != "" {
-		hostChan = IterateAddr(addr)
+		hostChan = IterateAddr(addr, enableIPv6)
 	} else if in != "" {
 		f, err := os.Open(in)
 		if err != nil {
@@ -74,7 +92,7 @@ func main() {
 			return
 		}
 		defer f.Close()
-		hostChan = Iterate(f)
+		hostChan = Iterate(f, enableIPv6)
 	} else {
 		slog.Info("Fetching url...")
 		resp, err := http.Get(url)
@@ -95,17 +113,24 @@ func main() {
 		}
 		domains = RemoveDuplicateStr(domains)
 		slog.Info("Parsed domains", "count", len(domains))
-		hostChan = Iterate(strings.NewReader(strings.Join(domains, "\n")))
+		hostChan = Iterate(strings.NewReader(strings.Join(domains, "\n")), enableIPv6)
 	}
 	outCh := OutWriter(outWriter)
 	defer close(outCh)
 	geo := NewGeo()
+	config := &ScanConfig{
+		Port:       port,
+		Thread:     thread,
+		Timeout:    timeout,
+		EnableIPv6: enableIPv6,
+		Verbose:    verbose,
+	}
 	var wg sync.WaitGroup
 	wg.Add(thread)
 	for i := 0; i < thread; i++ {
 		go func() {
 			for ip := range hostChan {
-				ScanTLS(ip, outCh, geo)
+				ScanTLS(ip, outCh, geo, config)
 			}
 			wg.Done()
 		}()

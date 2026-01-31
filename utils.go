@@ -29,7 +29,7 @@ type Host struct {
 	Type   HostType
 }
 
-func Iterate(reader io.Reader) <-chan Host {
+func Iterate(reader io.Reader, enableIPv6 bool) <-chan Host {
 	scanner := bufio.NewScanner(reader)
 	hostChan := make(chan Host)
 	go func() {
@@ -111,16 +111,16 @@ func ExistOnlyOne(arr []string) bool {
 	}
 	return exist
 }
-func IterateAddr(addr string) <-chan Host {
+func IterateAddr(addr string, enableIPv6 bool) <-chan Host {
 	hostChan := make(chan Host)
 	_, _, err := net.ParseCIDR(addr)
 	if err == nil {
 		// is CIDR
-		return Iterate(strings.NewReader(addr))
+		return Iterate(strings.NewReader(addr), enableIPv6)
 	}
 	ip := net.ParseIP(addr)
 	if ip == nil {
-		ip, err = LookupIP(addr)
+		ip, err = LookupIP(addr, enableIPv6)
 		if err != nil {
 			close(hostChan)
 			slog.Error("Not a valid IP, IP CIDR or domain", "addr", addr)
@@ -156,7 +156,7 @@ func IterateAddr(addr string) <-chan Host {
 	}()
 	return hostChan
 }
-func LookupIP(addr string) (net.IP, error) {
+func LookupIP(addr string, enableIPv6 bool) (net.IP, error) {
 	ips, err := net.LookupIP(addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup: %w", err)

@@ -1,19 +1,57 @@
 # Reality - TLS - Scanner
 
+TLS scanner for Reality servers with cross-platform GUI and automatic GeoIP database updates.
+
+## Features
+
+- **CLI Mode**: Command-line interface for automation and scripting
+- **GUI Mode**: Cross-platform graphical interface (Windows, macOS, Linux)
+- **Auto GeoIP**: Automatic download and update of MaxMind GeoLite2 Country database
+- **Multiple Sources**: Scan single IP/domain, CIDR ranges, file lists, or crawl from URLs
+- **Real-time Results**: Live scanning progress and results display
+- **Export to CSV**: Save results for further analysis
+
 ## Building
 
-Requirement: Go 1.21+
+Requirements:
+- Go 1.24+
+- GCC/MinGW-w64 (for GUI build with Fyne)
 
 ```bash
-go build
+# CLI + GUI build (shows console window)
+go build -o RealiTLScanner.exe
+
+# GUI build without console window (Windows only)
+go build -ldflags -H=windowsgui -o RealiTLScanner-GUI.exe
+
+# CLI only (no CGO required)
+CGO_ENABLED=0 go build
 ```
 
 ## Usage
 
-It is recommended to run this tool locally, as running the scanner in the cloud may cause the VPS to be flagged.
+### GUI Mode
+
+Launch the graphical interface by double-clicking the executable or running:
+
+```bash
+./RealiTLScanner --gui
+# or simply
+./RealiTLScanner
+```
+
+**GUI Features:**
+- Source selection: IP/CIDR/Domain, File, or URL
+- Configurable scan parameters (port, threads, timeout)
+- Real-time results table
+- Progress monitoring and logs
+- Export results to CSV
+
+### CLI Mode
+
 ```bash
 # Show help
-./RealiTLScanner
+./RealiTLScanner --help
 
 # Scan a specific IP, IP CIDR or domain:
 ./RealiTLScanner -addr 1.2.3.4
@@ -34,29 +72,43 @@ It is recommended to run this tool locally, as running the scanner in the cloud 
 # Save results to a file, default: out.csv
 ./RealiTLScanner -addr www.microsoft.com -out file.csv
 
-# Set a thread count, default: 1
+# Set a thread count, default: 2
 ./RealiTLScanner -addr wiki.ubuntu.com -thread 10
 
 # Set a timeout for each scan, default: 10 (seconds)
 ./RealiTLScanner -addr 107.172.1.1/16 -timeout 5
+
+# Enable IPv6 scanning
+./RealiTLScanner -addr example.com -46
 ```
-### In docker way
-Build container by yourself (you do not needed in golonag on your host)
+
+### Docker
+
+Build container (no Go required on host):
 ```bash
 docker build -t realitlscanner .
 ```
-Run and research
+
+Run:
 ```bash
 # show help
 docker run --rm realitlscanner
+
 # scan
 docker run --rm realitlscanner -addr 1.1.1.1
 ```
-### Enable Geo IP
 
-To enable Geo IP information, place a MaxMind GeoLite2/GeoIP2 Country Database in the executing folder with the exact name `Country.mmdb`. You can download one from [here](https://github.com/Loyalsoldier/geoip/releases/latest/download/Country.mmdb).
+## GeoIP Database
 
-## Demo
+The application **automatically downloads and updates** the MaxMind GeoLite2 Country database:
+
+- **First run**: Downloads `Country.mmdb` (~6 MB) from [P3TERX/GeoLite.mmdb](https://github.com/P3TERX/GeoLite.mmdb)
+- **Subsequent runs**: Checks for updates and downloads if available (~100ms check)
+- **No internet**: Works without GeoIP, shows "N/A" for country codes
+
+You can also manually place a GeoLite2/GeoIP2 Country Database in the executing folder with the exact name `Country.mmdb`.
+
+## Output Examples
 
 Example stdout:
 
@@ -65,14 +117,10 @@ Example stdout:
 2024/02/08 20:51:10 INFO Connected to target feasible=true host=107.172.103.9 tls=1.3 alpn=h2 domain=rocky-linux.tk issuer="Let's Encrypt"
 2024/02/08 20:51:10 INFO Connected to target feasible=true host=107.172.103.11 tls=1.3 alpn=h2 domain=rn.allinai.dev issuer="Let's Encrypt"
 2024/02/08 20:51:13 INFO Connected to target feasible=true host=107.172.103.16 tls=1.3 alpn=h2 domain=san.hiddify01.foshou.vip issuer="Let's Encrypt"
-2024/02/08 20:51:13 INFO Connected to target feasible=true host=107.172.103.19 tls=1.3 alpn=h2 domain=mgzx19.cnscholar.top issuer="Let's Encrypt"
-2024/02/08 20:51:13 INFO Connected to target feasible=true host=107.172.103.22 tls=1.3 alpn=h2 domain=hy2.znull.top issuer=ZeroSSL
-2024/02/08 20:51:21 INFO Connected to target feasible=true host=107.172.103.37 tls=1.3 alpn=h2 domain=c1.webgenbd.com issuer="Let's Encrypt"
-2024/02/08 20:51:23 INFO Connected to target feasible=true host=107.172.103.46 tls=1.3 alpn=h2 domain=racknerd.myideal.xyz issuer="Let's Encrypt"
 2024/02/08 20:51:38 INFO Scanning completed time=2024-02-08T20:51:38.988+08:00 elapsed=28.97043s
 ```
 
-Example output file:
+Example CSV output:
 
 ```csv
 IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE
@@ -81,10 +129,13 @@ IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE
 103.194.167.213,mirror.i3d.net,*.i3d.net,"Sectigo Limited",JP
 194.127.172.131,nl.mirrors.clouvider.net,nl.mirrors.clouvider.net,"Let's Encrypt",NL
 202.36.220.86,mirror.2degrees.nz,mirror.2degrees.nz,"Let's Encrypt",NZ
-202.36.220.86,ubuntu.mirrors.theom.nz,mirror.2degrees.nz,"Let's Encrypt",NZ
 158.37.28.65,ubuntu.hi.no,alma.hi.no,"Let's Encrypt",NO
 193.136.164.6,ftp.rnl.tecnico.ulisboa.pt,ftp.rnl.ist.utl.pt,"Let's Encrypt",PT
-75.2.60.5,cesium.di.uminho.pt,cesium.di.uminho.pt,"Let's Encrypt",US
-195.14.50.21,mirror.corbina.net,ftp.corbina.net,"Let's Encrypt",RU
 ```
+
+## Notes
+
+- It is recommended to run this tool locally, as running the scanner in the cloud may cause the VPS to be flagged
+- The compiled executable does not require Go or GCC installation on end-user systems
+- GUI binary size is approximately 40-50 MB due to embedded Fyne libraries
 

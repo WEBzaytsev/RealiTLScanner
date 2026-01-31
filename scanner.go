@@ -113,6 +113,15 @@ func ScanTLSWithCallbacks(host Host, scanner *Scanner) {
 
 	state := c.ConnectionState()
 	alpn := state.NegotiatedProtocol
+	
+	// Safely access certificate data
+	if len(state.PeerCertificates) == 0 {
+		if scanner.Callbacks != nil && scanner.Callbacks.OnLog != nil && scanner.Config.Verbose {
+			scanner.Callbacks.OnLog("debug", "No peer certificates for "+hostPort)
+		}
+		return
+	}
+	
 	domain := state.PeerCertificates[0].Subject.CommonName
 	issuers := strings.Join(state.PeerCertificates[0].Issuer.Organization, " | ")
 	geoCode := scanner.Geo.GetGeo(host.IP)

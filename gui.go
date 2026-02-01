@@ -383,6 +383,37 @@ func sanitizeNumericInput(input string) string {
 	}, strings.TrimSpace(input))
 }
 
+func sanitizeForFilename(input string) string {
+	// Remove or replace invalid filename characters
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		":", "_",
+		"*", "_",
+		"?", "_",
+		"\"", "_",
+		"<", "_",
+		">", "_",
+		"|", "_",
+		" ", "_",
+	)
+	sanitized := replacer.Replace(input)
+	
+	// Limit length to 50 characters
+	if len(sanitized) > 50 {
+		sanitized = sanitized[:50]
+	}
+	
+	// Remove trailing dots and underscores
+	sanitized = strings.TrimRight(sanitized, "._")
+	
+	if sanitized == "" {
+		sanitized = "scan"
+	}
+	
+	return sanitized
+}
+
 func (g *GUI) onStart() {
 	if g.isScanning {
 		return
@@ -608,9 +639,10 @@ func (g *GUI) onSaveCSV() {
 		return
 	}
 	
-	// Generate default filename with timestamp
+	// Generate default filename based on scan target
 	timestamp := time.Now().Format("20060102_150405")
-	defaultFilename := fmt.Sprintf("scan_results_%s.csv", timestamp)
+	target := sanitizeForFilename(g.inputEntry.Text)
+	defaultFilename := fmt.Sprintf("%s_%s.csv", target, timestamp)
 	
 	// Create file save dialog
 	fileDialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
@@ -661,9 +693,10 @@ func (g *GUI) onSaveExcel() {
 		return
 	}
 	
-	// Generate default filename with timestamp
+	// Generate default filename based on scan target
 	timestamp := time.Now().Format("20060102_150405")
-	defaultFilename := fmt.Sprintf("scan_results_%s.xlsx", timestamp)
+	target := sanitizeForFilename(g.inputEntry.Text)
+	defaultFilename := fmt.Sprintf("%s_%s.xlsx", target, timestamp)
 	
 	// Create file save dialog
 	fileDialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {

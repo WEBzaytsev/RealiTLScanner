@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"sort"
@@ -14,11 +15,15 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xuri/excelize/v2"
 )
+
+//go:embed translations
+var translations embed.FS
 
 type GUI struct {
 	app        fyne.App
@@ -46,6 +51,7 @@ type GUI struct {
 	timeoutEntry *widget.Entry
 	ipv6Check   *widget.Check
 	verboseCheck *widget.Check
+	langSelect  *widget.Select
 	
 	// Control widgets
 	startBtn     *widget.Button
@@ -62,7 +68,13 @@ type GUI struct {
 
 func runGUI() {
 	myApp := app.New()
-	myWindow := myApp.NewWindow("RealiTLScanner")
+	
+	// Initialize translations
+	if err := lang.AddTranslationsFS(translations, "translations"); err != nil {
+		fmt.Printf("Failed to load translations: %v\n", err)
+	}
+	
+	myWindow := myApp.NewWindow(lang.X("app.title", "RealiTLScanner"))
 	myWindow.Resize(fyne.NewSize(1000, 700))
 	
 	gui := &GUI{
@@ -72,7 +84,7 @@ func runGUI() {
 	}
 	
 	gui.statusText = binding.NewString()
-	gui.statusText.Set("Ready to scan")
+	gui.statusText.Set(lang.X("status.ready", "Ready to scan"))
 	
 	gui.logText = binding.NewString()
 	gui.logText.Set("")
@@ -85,13 +97,17 @@ func runGUI() {
 func (g *GUI) buildUI() fyne.CanvasObject {
 	// Create Entry first (before RadioGroup)
 	g.inputEntry = widget.NewEntry()
-	g.inputEntry.SetPlaceHolder("Enter IP, CIDR or domain")
+	g.inputEntry.SetPlaceHolder(lang.X("placeholder.ip", "Enter IP, CIDR or domain"))
 	
 	// Source selection
-	g.sourceRadio = widget.NewRadioGroup([]string{"IP/CIDR/Domain", "File", "URL"}, func(value string) {
+	g.sourceRadio = widget.NewRadioGroup([]string{
+		lang.X("source.ip", "IP/CIDR/Domain"),
+		lang.X("source.file", "File"),
+		lang.X("source.url", "URL"),
+	}, func(value string) {
 		g.inputEntry.SetPlaceHolder(g.getPlaceholder(value))
 	})
-	g.sourceRadio.SetSelected("IP/CIDR/Domain")
+	g.sourceRadio.SetSelected(lang.X("source.ip", "IP/CIDR/Domain"))
 	g.sourceRadio.Horizontal = true
 	
 	fileBrowseBtn := widget.NewButton("...", func() {
@@ -110,7 +126,7 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	inputContainer := container.NewBorder(nil, nil, nil, fileBrowseBtn, g.inputEntry)
 	
 	sourceBox := container.NewVBox(
-		widget.NewLabel("Source:"),
+		widget.NewLabel(lang.X("source.label", "Source:")),
 		g.sourceRadio,
 		inputContainer,
 	)
@@ -128,30 +144,39 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.timeoutEntry.SetText("10")
 	g.timeoutEntry.SetPlaceHolder("10")
 	
-	g.ipv6Check = widget.NewCheck("IPv6", nil)
-	g.verboseCheck = widget.NewCheck("Verbose", nil)
+	g.ipv6Check = widget.NewCheck(lang.X("settings.ipv6", "IPv6"), nil)
+	g.verboseCheck = widget.NewCheck(lang.X("settings.verbose", "Verbose"), nil)
+	
+	// Language selector
+	g.langSelect = widget.NewSelect([]string{"English", "Русский"}, g.onLanguageChange)
+	g.langSelect.SetSelected("English")
 	
 	settingsGrid := container.New(layout.NewGridLayout(6),
-		widget.NewLabel("Port:"), g.portEntry,
-		widget.NewLabel("Threads:"), g.threadEntry,
-		widget.NewLabel("Timeout:"), g.timeoutEntry,
+		widget.NewLabel(lang.X("settings.port", "Port:")), g.portEntry,
+		widget.NewLabel(lang.X("settings.threads", "Threads:")), g.threadEntry,
+		widget.NewLabel(lang.X("settings.timeout", "Timeout:")), g.timeoutEntry,
+	)
+	
+	langBox := container.NewHBox(
+		widget.NewLabel(lang.X("settings.language", "Language:")),
+		g.langSelect,
 	)
 	
 	checksBox := container.NewHBox(g.ipv6Check, g.verboseCheck)
 	
-	settingsBox := container.NewVBox(settingsGrid, checksBox)
+	settingsBox := container.NewVBox(settingsGrid, checksBox, langBox)
 	
 	// Control buttons
-	g.startBtn = widget.NewButton("Start", g.onStart)
+	g.startBtn = widget.NewButton(lang.X("btn.start", "Start"), g.onStart)
 	g.startBtn.Importance = widget.HighImportance
 	
-	g.stopBtn = widget.NewButton("Stop", g.onStop)
+	g.stopBtn = widget.NewButton(lang.X("btn.stop", "Stop"), g.onStop)
 	g.stopBtn.Disable()
 	
-	g.saveCSVBtn = widget.NewButton("Save CSV", g.onSaveCSV)
+	g.saveCSVBtn = widget.NewButton(lang.X("btn.save_csv", "Save CSV"), g.onSaveCSV)
 	g.saveCSVBtn.Disable()
 	
-	g.saveExcelBtn = widget.NewButton("Save Excel", g.onSaveExcel)
+	g.saveExcelBtn = widget.NewButton(lang.X("btn.save_excel", "Save Excel"), g.onSaveExcel)
 	g.saveExcelBtn.Disable()
 	
 	controlBox := container.NewHBox(
@@ -179,7 +204,14 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 			
 			if id.Row == 0 {
 				// Header with sort indicator
-				headers := []string{"IP", "Origin", "Domain", "Issuer", "Geo", "Feasible"}
+				headers := []string{
+					lang.X("table.ip", "IP"),
+					lang.X("table.origin", "Origin"),
+					lang.X("table.domain", "Domain"),
+					lang.X("table.issuer", "Issuer"),
+					lang.X("table.geo", "Geo"),
+					lang.X("table.feasible", "Feasible"),
+				}
 				headerText := headers[id.Col]
 				if g.sortColumn == id.Col {
 					if g.sortAscending {
@@ -264,11 +296,13 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 						// Show brief notification
 						fyne.Do(func() {
 							oldStatus, _ := g.statusText.Get()
-							g.statusText.Set(fmt.Sprintf("Copied: %s", text))
+							g.statusText.Set(lang.X("status.copied", "Copied: {{.Text}}", map[string]any{"Text": text}))
 							time.AfterFunc(2*time.Second, func() {
 								fyne.Do(func() {
 									currentStatus, _ := g.statusText.Get()
-									if strings.HasPrefix(currentStatus, "Copied:") {
+									copiedPrefix := lang.X("status.copied", "Copied: {{.Text}}", map[string]any{"Text": ""})
+									copiedPrefix = copiedPrefix[:len("Copied:")]
+									if strings.HasPrefix(currentStatus, copiedPrefix) {
 										g.statusText.Set(oldStatus)
 									}
 								})
@@ -300,7 +334,7 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.resultsTable.SetColumnWidth(5, 80)
 	
 	resultsContainer := container.NewBorder(
-		widget.NewLabel("Results:"),
+		widget.NewLabel(lang.X("label.results", "Results:")),
 		nil, nil, nil,
 		g.resultsTable,
 	)
@@ -314,7 +348,7 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.logScroll.SetMinSize(fyne.NewSize(0, 100))
 	
 	logContainer := container.NewBorder(
-		widget.NewLabel("Log:"),
+		widget.NewLabel(lang.X("label.log", "Log:")),
 		nil, nil, nil,
 		g.logScroll,
 	)
@@ -346,13 +380,17 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 }
 
 func (g *GUI) getPlaceholder(source string) string {
+	ipLabel := lang.X("source.ip", "IP/CIDR/Domain")
+	fileLabel := lang.X("source.file", "File")
+	urlLabel := lang.X("source.url", "URL")
+	
 	switch source {
-	case "IP/CIDR/Domain":
-		return "Enter IP, CIDR or domain"
-	case "File":
-		return "Select file with address list"
-	case "URL":
-		return "Enter URL to parse domains from"
+	case ipLabel:
+		return lang.X("placeholder.ip", "Enter IP, CIDR or domain")
+	case fileLabel:
+		return lang.X("placeholder.file", "Select file with address list")
+	case urlLabel:
+		return lang.X("placeholder.url", "Enter URL to parse domains from")
 	default:
 		return ""
 	}
@@ -422,7 +460,7 @@ func (g *GUI) onStart() {
 	// Sanitize and validate inputs
 	sanitizedInput := sanitizeInput(g.inputEntry.Text)
 	if sanitizedInput == "" {
-		dialog.ShowError(fmt.Errorf("Please specify scan source"), g.window)
+		dialog.ShowError(fmt.Errorf(lang.X("error.no_source", "Please specify scan source")), g.window)
 		return
 	}
 	
@@ -440,7 +478,7 @@ func (g *GUI) onStart() {
 	
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 || port > 65535 {
-		dialog.ShowError(fmt.Errorf("Invalid port"), g.window)
+		dialog.ShowError(fmt.Errorf(lang.X("error.invalid_port", "Invalid port")), g.window)
 		return
 	}
 	
@@ -452,7 +490,7 @@ func (g *GUI) onStart() {
 	
 	threads, err := strconv.Atoi(threadStr)
 	if err != nil || threads <= 0 {
-		dialog.ShowError(fmt.Errorf("Invalid thread count"), g.window)
+		dialog.ShowError(fmt.Errorf(lang.X("error.invalid_threads", "Invalid thread count")), g.window)
 		return
 	}
 	
@@ -464,7 +502,7 @@ func (g *GUI) onStart() {
 	
 	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil || timeout <= 0 {
-		dialog.ShowError(fmt.Errorf("Invalid timeout"), g.window)
+		dialog.ShowError(fmt.Errorf(lang.X("error.invalid_timeout", "Invalid timeout")), g.window)
 		return
 	}
 	
@@ -494,7 +532,7 @@ func (g *GUI) onStart() {
 			// Update UI through fyne.Do
 			fyne.Do(func() {
 				g.resultsTable.Refresh()
-				g.statusText.Set(fmt.Sprintf("Scanning... Found: %d", count))
+				g.statusText.Set(lang.X("status.scanning", "Scanning... Found: {{.Count}}", map[string]any{"Count": count}))
 			})
 		},
 		OnLog: func(level, message string) {
@@ -516,9 +554,19 @@ func (g *GUI) onStart() {
 	}
 	
 	// Create Scanner in background to avoid blocking UI during GeoIP loading
-	g.statusText.Set("Initializing...")
+	g.statusText.Set(lang.X("status.initializing", "Initializing..."))
 	g.startBtn.Disable()
 	go func() {
+		// Check and update GeoIP database before creating scanner
+		if g.scanner != nil && g.scanner.Geo != nil {
+			g.statusText.Set(lang.X("status.checking_geo", "Checking GeoIP database..."))
+			if err := g.scanner.Geo.CheckAndUpdate(); err != nil {
+				if callbacks != nil && callbacks.OnLog != nil {
+					callbacks.OnLog("error", fmt.Sprintf("GeoIP update failed: %v", err))
+				}
+			}
+		}
+		
 		g.scanner = NewScanner(config, callbacks)
 		
 		// After initialization start scanning
@@ -528,7 +576,7 @@ func (g *GUI) onStart() {
 			g.stopBtn.Enable()
 			g.saveCSVBtn.Disable()
 			g.saveExcelBtn.Disable()
-			g.statusText.Set("Scanning started...")
+			g.statusText.Set(lang.X("status.scanning", "Scanning... Found: {{.Count}}", map[string]any{"Count": 0}))
 		})
 		
 		// Start scanning in background
@@ -540,7 +588,7 @@ func (g *GUI) runScan() {
 	// Check that scanner is initialized
 	if g.scanner == nil {
 		fyne.Do(func() {
-			g.statusText.Set("Error: Scanner not initialized")
+			g.statusText.Set(lang.X("error.scanner_not_init", "Error: Scanner not initialized"))
 			g.isScanning = false
 			g.startBtn.Enable()
 			g.stopBtn.Disable()
@@ -552,7 +600,8 @@ func (g *GUI) runScan() {
 	if g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
 		source := g.sourceRadio.Selected
 		input := sanitizeInput(g.inputEntry.Text)
-		g.scanner.Callbacks.OnLog("info", fmt.Sprintf("Starting scan: %s - %s", source, input))
+		g.scanner.Callbacks.OnLog("info", lang.X("status.scan_start", "Starting scan: {{.Source}} - {{.Input}}", 
+			map[string]any{"Source": source, "Input": input}))
 	}
 	
 	defer func() {
@@ -562,7 +611,8 @@ func (g *GUI) runScan() {
 		
 		// Log scan completion
 		if g.scanner != nil && g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
-			g.scanner.Callbacks.OnLog("info", fmt.Sprintf("Scan completed. Found: %d results", count))
+			g.scanner.Callbacks.OnLog("info", lang.X("status.scan_complete_log", "Scan completed. Found: {{.Count}} results", 
+				map[string]any{"Count": count}))
 		}
 		
 		fyne.Do(func() {
@@ -573,7 +623,7 @@ func (g *GUI) runScan() {
 				g.saveCSVBtn.Enable()
 				g.saveExcelBtn.Enable()
 			}
-			g.statusText.Set(fmt.Sprintf("Scanning completed. Found: %d", count))
+			g.statusText.Set(lang.X("status.completed", "Scanning completed. Found: {{.Count}}", map[string]any{"Count": count}))
 		})
 	}()
 	
@@ -625,7 +675,7 @@ func (g *GUI) runScan() {
 func (g *GUI) onStop() {
 	if g.scanner != nil {
 		g.scanner.Stop()
-		g.statusText.Set("Stopping scan...")
+		g.statusText.Set(lang.X("status.stopping", "Stopping scan..."))
 	}
 }
 
@@ -635,7 +685,8 @@ func (g *GUI) onSaveCSV() {
 	g.resultsMu.Unlock()
 	
 	if resultsCount == 0 {
-		dialog.ShowInformation("No Results", "No results to save", g.window)
+		dialog.ShowInformation(lang.X("dialog.no_results", "No Results"), 
+			lang.X("dialog.no_results_msg", "No results to save"), g.window)
 		return
 	}
 	
@@ -672,8 +723,8 @@ func (g *GUI) onSaveCSV() {
 			}
 		}
 		
-		dialog.ShowInformation("Saved",
-			fmt.Sprintf("Saved %d feasible results", savedCount), g.window)
+		dialog.ShowInformation(lang.X("dialog.saved", "Saved"),
+			lang.X("dialog.saved_msg", "Saved {{.Count}} feasible results", map[string]any{"Count": savedCount}), g.window)
 		
 	}, g.window)
 	
@@ -689,7 +740,8 @@ func (g *GUI) onSaveExcel() {
 	g.resultsMu.Unlock()
 	
 	if resultsCount == 0 {
-		dialog.ShowInformation("No Results", "No results to save", g.window)
+		dialog.ShowInformation(lang.X("dialog.no_results", "No Results"), 
+			lang.X("dialog.no_results_msg", "No results to save"), g.window)
 		return
 	}
 	
@@ -710,7 +762,8 @@ func (g *GUI) onSaveExcel() {
 		defer writer.Close()
 		
 		if err := g.saveToExcel(writer); err != nil {
-			dialog.ShowError(fmt.Errorf("Failed to save Excel: %v", err), g.window)
+			dialog.ShowError(fmt.Errorf(lang.X("dialog.failed_save_excel", "Failed to save Excel: {{.Error}}", 
+				map[string]any{"Error": err.Error()})), g.window)
 		} else {
 			g.resultsMu.Lock()
 			savedCount := 0
@@ -721,8 +774,8 @@ func (g *GUI) onSaveExcel() {
 			}
 			g.resultsMu.Unlock()
 			
-			dialog.ShowInformation("Saved",
-				fmt.Sprintf("Saved %d feasible results", savedCount), g.window)
+			dialog.ShowInformation(lang.X("dialog.saved", "Saved"),
+				lang.X("dialog.saved_msg", "Saved {{.Count}} feasible results", map[string]any{"Count": savedCount}), g.window)
 		}
 		
 	}, g.window)
@@ -862,3 +915,19 @@ func (g *GUI) saveToExcel(writer fyne.URIWriteCloser) error {
 	return err
 }
 
+func (g *GUI) onLanguageChange(selected string) {
+	var locale string
+	switch selected {
+	case "Русский":
+		locale = "ru"
+	default:
+		locale = "en"
+	}
+	
+	// Set locale for lang package
+	os.Setenv("LANG", locale)
+	
+	// Rebuild UI to apply new language
+	g.window.SetContent(g.buildUI())
+	g.window.SetTitle(lang.X("app.title", "RealiTLScanner"))
+}

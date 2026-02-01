@@ -170,3 +170,34 @@ func (o *Geo) GetGeo(ip net.IP) string {
 	}
 	return country.Country.IsoCode
 }
+
+// CheckAndUpdate checks if GeoIP database needs update and updates it
+func (g *Geo) CheckAndUpdate() error {
+	needUpdate, err := needsUpdate(geoDBPath)
+	if err != nil {
+		return err
+	}
+	
+	if needUpdate {
+		if err := downloadCountryDB(); err != nil {
+			return err
+		}
+		
+		// Reopen database with new file
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		
+		if g.geoReader != nil {
+			g.geoReader.Close()
+		}
+		
+		reader, err := geoip2.Open(geoDBPath)
+		if err != nil {
+			return err
+		}
+		g.geoReader = reader
+		slog.Info("GeoIP database updated and reloaded")
+	}
+	
+	return nil
+}

@@ -1,0 +1,56 @@
+{
+  "app.title": "RealiTLScanner",
+  "status.ready": "Ready to scan",
+  "status.scanning": "Scanning... Found: {{.Count}}",
+  "status.completed": "Scanning completed. Found: {{.Count}}",
+  "status.checking_geo": "Checking GeoIP database...",
+  "status.geo_ready": "GeoIP ready",
+  "status.geo_unavailable": "GeoIP unavailable",
+  "status.initializing": "Initializing...",
+  "status.stopping": "Stopping scan...",
+  "status.copied": "Copied: {{.Text}}",
+  "status.scan_start": "Starting scan: {{.Source}} - {{.Input}}",
+  "status.scan_complete_log": "Scan completed. Found: {{.Count}} results",
+  
+  "source.label": "Source:",
+  "source.ip": "IP/CIDR/Domain",
+  "source.file": "File",
+  "source.url": "URL",
+  "placeholder.ip": "Enter IP, CIDR or domain",
+  "placeholder.file": "Select file with address list",
+  "placeholder.url": "Enter URL to parse domains from",
+  
+  "settings.port": "Port:",
+  "settings.threads": "Threads:",
+  "settings.timeout": "Timeout:",
+  "settings.ipv6": "IPv6",
+  "settings.verbose": "Verbose",
+  "settings.language": "Language:",
+  
+  "btn.start": "Start",
+  "btn.stop": "Stop",
+  "btn.save_csv": "Save CSV",
+  "btn.save_excel": "Save Excel",
+  
+  "table.ip": "IP",
+  "table.origin": "Origin",
+  "table.domain": "Domain",
+  "table.issuer": "Issuer",
+  "table.geo": "Geo",
+  "table.feasible": "Feasible",
+  
+  "label.results": "Results:",
+  "label.log": "Log:",
+  
+  "error.no_source": "Please specify scan source",
+  "error.invalid_port": "Invalid port",
+  "error.invalid_threads": "Invalid thread count",
+  "error.invalid_timeout": "Invalid timeout",
+  "error.scanner_not_init": "Error: Scanner not initialized",
+  
+  "dialog.no_results": "No Results",
+  "dialog.no_results_msg": "No results to save",
+  "dialog.saved": "Saved",
+  "dialog.saved_msg": "Saved {{.Count}} feasible results",
+  "dialog.failed_save_excel": "Failed to save Excel: {{.Error}}"
+}

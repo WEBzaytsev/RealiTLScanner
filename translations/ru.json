@@ -1,0 +1,56 @@
+{
+  "app.title": "RealiTLScanner",
+  "status.ready": "Готов к сканированию",
+  "status.scanning": "Сканирование... Найдено: {{.Count}}",
+  "status.completed": "Сканирование завершено. Найдено: {{.Count}}",
+  "status.checking_geo": "Проверка базы GeoIP...",
+  "status.geo_ready": "GeoIP готов",
+  "status.geo_unavailable": "GeoIP недоступен",
+  "status.initializing": "Инициализация...",
+  "status.stopping": "Остановка сканирования...",
+  "status.copied": "Скопировано: {{.Text}}",
+  "status.scan_start": "Начало сканирования: {{.Source}} - {{.Input}}",
+  "status.scan_complete_log": "Сканирование завершено. Найдено: {{.Count}} результатов",
+  
+  "source.label": "Источник:",
+  "source.ip": "IP/CIDR/Домен",
+  "source.file": "Файл",
+  "source.url": "URL",
+  "placeholder.ip": "Введите IP, CIDR или домен",
+  "placeholder.file": "Выберите файл со списком адресов",
+  "placeholder.url": "Введите URL для парсинга доменов",
+  
+  "settings.port": "Порт:",
+  "settings.threads": "Потоки:",
+  "settings.timeout": "Таймаут:",
+  "settings.ipv6": "IPv6",
+  "settings.verbose": "Подробно",
+  "settings.language": "Язык:",
+  
+  "btn.start": "Старт",
+  "btn.stop": "Стоп",
+  "btn.save_csv": "Сохранить CSV",
+  "btn.save_excel": "Сохранить Excel",
+  
+  "table.ip": "IP",
+  "table.origin": "Источник",
+  "table.domain": "Домен",
+  "table.issuer": "Издатель",
+  "table.geo": "Гео",
+  "table.feasible": "Подходит",
+  
+  "label.results": "Результаты:",
+  "label.log": "Лог:",
+  
+  "error.no_source": "Укажите источник сканирования",
+  "error.invalid_port": "Неверный порт",
+  "error.invalid_threads": "Неверное количество потоков",
+  "error.invalid_timeout": "Неверный таймаут",
+  "error.scanner_not_init": "Ошибка: Сканер не инициализирован",
+  
+  "dialog.no_results": "Нет результатов",
+  "dialog.no_results_msg": "Нет результатов для сохранения",
+  "dialog.saved": "Сохранено",
+  "dialog.saved_msg": "Сохранено {{.Count}} подходящих результатов",
+  "dialog.failed_save_excel": "Не удалось сохранить Excel: {{.Error}}"
+}

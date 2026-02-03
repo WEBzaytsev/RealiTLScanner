@@ -32,7 +32,6 @@ type GUI struct {
 	results    []ScanResult
 	resultsMu  sync.Mutex
 	isScanning bool
-	isRebuilding bool
 	statusText binding.String
 	logText    binding.String
 	
@@ -52,7 +51,6 @@ type GUI struct {
 	timeoutEntry *widget.Entry
 	ipv6Check   *widget.Check
 	verboseCheck *widget.Check
-	langSelect  *widget.Select
 	
 	// Control widgets
 	startBtn     *widget.Button
@@ -70,16 +68,15 @@ type GUI struct {
 func runGUI() {
 	myApp := app.NewWithID("com.realitlscanner.app")
 	
-	// Load saved language preference or default to English
-	savedLang := myApp.Preferences().StringWithFallback("language", "English")
-	
-	if savedLang == "Русский" {
+	// Detect system language and set accordingly
+	sysLang := lang.SystemLocale().String()
+	if strings.HasPrefix(sysLang, "ru") {
 		os.Setenv("LANG", "ru")
 	} else {
 		os.Setenv("LANG", "en")
 	}
 	
-	// Initialize translations - continue even if fails
+	// Initialize translations
 	if err := lang.AddTranslationsFS(translations, "translations"); err != nil {
 		fmt.Printf("Warning: Failed to load translations: %v\n", err)
 	}
@@ -157,25 +154,15 @@ func (g *GUI) buildUI() fyne.CanvasObject {
 	g.ipv6Check = widget.NewCheck(lang.X("settings.ipv6", "IPv6"), nil)
 	g.verboseCheck = widget.NewCheck(lang.X("settings.verbose", "Verbose"), nil)
 	
-	// Language selector with saved preference
-	savedLang := g.app.Preferences().StringWithFallback("language", "English")
-	g.langSelect = widget.NewSelect([]string{"English", "Русский"}, g.onLanguageChange)
-	g.langSelect.SetSelected(savedLang)
-	
 	settingsGrid := container.New(layout.NewGridLayout(6),
 		widget.NewLabel(lang.X("settings.port", "Port:")), g.portEntry,
 		widget.NewLabel(lang.X("settings.threads", "Threads:")), g.threadEntry,
 		widget.NewLabel(lang.X("settings.timeout", "Timeout:")), g.timeoutEntry,
 	)
 	
-	langBox := container.NewHBox(
-		widget.NewLabel(lang.X("settings.language", "Language:")),
-		g.langSelect,
-	)
-	
 	checksBox := container.NewHBox(g.ipv6Check, g.verboseCheck)
 	
-	settingsBox := container.NewVBox(settingsGrid, checksBox, langBox)
+	settingsBox := container.NewVBox(settingsGrid, checksBox)
 	
 	// Control buttons
 	g.startBtn = widget.NewButton(lang.X("btn.start", "Start"), g.onStart)
@@ -924,31 +911,4 @@ func (g *GUI) saveToExcel(writer fyne.URIWriteCloser) error {
 	
 	_, err = writer.Write(buf.Bytes())
 	return err
-}
-
-func (g *GUI) onLanguageChange(selected string) {
-	// Prevent recursion during UI rebuild
-	if g.isRebuilding {
-		return
-	}
-	
-	var locale string
-	switch selected {
-	case "Русский":
-		locale = "ru"
-	default:
-		locale = "en"
-	}
-	
-	// Save language preference
-	g.app.Preferences().SetString("language", selected)
-	
-	// Set locale for lang package
-	os.Setenv("LANG", locale)
-	
-	// Rebuild UI to apply new language
-	g.isRebuilding = true
-	g.window.SetContent(g.buildUI())
-	g.window.SetTitle(lang.X("app.title", "RealiTLScanner"))
-	g.isRebuilding = false
 }

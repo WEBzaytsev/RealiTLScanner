@@ -630,9 +630,9 @@ func (g *GUI) runScan() {
 	input := sanitizeInput(g.inputEntry.Text)
 	
 	switch source {
-	case "IP/CIDR/Domain":
+	case lang.X("source.ip", "IP/CIDR/Domain"):
 		hostChan = IterateAddr(input, g.scanner.Config.EnableIPv6)
-	case "File":
+	case lang.X("source.file", "File"):
 		f, err := os.Open(input)
 		if err != nil {
 			if g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
@@ -642,7 +642,7 @@ func (g *GUI) runScan() {
 		}
 		defer f.Close()
 		hostChan = Iterate(f, g.scanner.Config.EnableIPv6)
-	case "URL":
+	case lang.X("source.url", "URL"):
 		// TODO: implement URL parsing
 		if g.scanner.Callbacks != nil && g.scanner.Callbacks.OnLog != nil {
 			g.scanner.Callbacks.OnLog("info", "URL parsing not yet implemented in GUI")
